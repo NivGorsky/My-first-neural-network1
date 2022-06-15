@@ -3,7 +3,7 @@ import random
 import mnist_loader
 
 class NeuralNetwork:
-    def __init__(self, network_structure): #the network structure already contains the bias
+    def __init__(self, network_structure):
         self._network_structure = []
         self._init_network_structure(network_structure)
         self._number_of_layers = len(self._network_structure)
@@ -80,12 +80,11 @@ class NeuralNetwork:
     def _learn_by_mini_batch(self, mini_batch):
         weights_delta_for_current_mini_batch = [np.zeros(w.shape) for w in self._weights_by_spaces_between_layers]
 
-        for sample_array, actual_result_array in mini_batch: #x is the array of data, y is the result
+        for sample_array, actual_result_array in mini_batch:
             weights_delta_for_current_xi = self._feed_forward_and_back_propagation(sample_array, actual_result_array)
-            # weights_delta_for_current_mini_batch = [nw + dnw for nw, dnw in zip(weights_delta_for_current_mini_batch, weights_delta_for_current_xi)]
             weights_delta_for_current_mini_batch = self._get_weights_delta_for_current_mini_batch(weights_delta_for_current_mini_batch, weights_delta_for_current_xi)
-            self._weights_by_spaces_between_layers = [w - self._eta * nw
-                                                      for w, nw in zip(self._weights_by_spaces_between_layers, weights_delta_for_current_mini_batch)]
+            self._weights_by_spaces_between_layers = [old_weights - self._eta * new_weights
+                                                      for old_weights, new_weights in zip(self._weights_by_spaces_between_layers, weights_delta_for_current_mini_batch)]
 
     def _get_weights_delta_for_current_mini_batch(self, weights_delta_for_current_mini_batch, weights_delta_for_current_xi):
 
@@ -95,22 +94,18 @@ class NeuralNetwork:
 
         return result
 
-
-        # return [nw + dnw for nw, dnw in zip(weights_delta_for_current_mini_batch, weights_delta_for_current_xi)]
-
     def _add_bias_to_array(self, np_array):
 
         return np.insert(np_array, 0, 1, axis=0)
 
-    def _feed_forward_and_back_propagation(self, x, y):
-        x = self._add_bias_to_array(x)
-        nabla_w = [np.zeros(w.shape) for w in self._weights_by_spaces_between_layers]
-        current_activation = x #the first activation is the actual data values x1,x2...xN
-        activations = [x]  # list to store all the activations, layer by layer
-        all_layers_dot_products = [] # this list holds the dot products of all the neurons in a single layer
+    def _feed_forward_and_back_propagation(self, x_data, y_results):
+        x_data = self._add_bias_to_array(x_data)
+        new_weights_for_current_feedforward_and_back_propagation = [np.zeros(w.shape) for w in self._weights_by_spaces_between_layers]
+        current_activation = x_data #the first activation is the actual data values x1,x2...xN
+        activations = [x_data]
+        all_layers_dot_products = []
 
-        # what im doing is to add the bias every iteration for the current activation..(adding 1 in the index - of the activation array)
-        #feedforward
+        # adding the bias every iteration for the current activation...(adding 1 in the index 0 of the activation array)
         for i, weights_of_all_neurons_in_current_layer in enumerate(self._weights_by_spaces_between_layers):
             dot_products_for_all_neurons_in_current_layer = np.dot(weights_of_all_neurons_in_current_layer, current_activation)
             all_layers_dot_products.append(dot_products_for_all_neurons_in_current_layer)
@@ -121,20 +116,17 @@ class NeuralNetwork:
 
             activations.append(current_activation)
 
-        #back propagation
-        # the last layer partial derivatives equation
-        delta = self.cost_derivative(activations[-1], y) * self.sigmoid_prime(all_layers_dot_products[-1])
-        nabla_w[-1] = np.dot(delta, activations[-2].transpose())
+        weights_delta = self._derivative_of_activation_function_of_last_layer(activations[-1], y_results) * self._sigmoid_prime(all_layers_dot_products[-1])
+        new_weights_for_current_feedforward_and_back_propagation[-1] = np.dot(weights_delta, activations[-2].transpose())
 
-        # I don't use b since the bias is already in the weights... like adi taut us.
         for i in range(2, self._number_of_layers):
             dot_products_for_all_neurons_in_current_layer = all_layers_dot_products[-i]
             weights_by_current_layer = self._weights_by_spaces_between_layers[-i + 1]
             weights_by_current_layer_without_bias_weights = np.delete(weights_by_current_layer, 0, 1)
-            delta = np.dot(weights_by_current_layer_without_bias_weights.transpose(), delta) * self.sigmoid_prime(dot_products_for_all_neurons_in_current_layer)
-            nabla_w[-i] = np.dot(delta, activations[-i - 1].transpose())
+            weights_delta = np.dot(weights_by_current_layer_without_bias_weights.transpose(), weights_delta) * self._sigmoid_prime(dot_products_for_all_neurons_in_current_layer)
+            new_weights_for_current_feedforward_and_back_propagation[-i] = np.dot(weights_delta, activations[-i - 1].transpose())
 
-        return nabla_w
+        return new_weights_for_current_feedforward_and_back_propagation
 
     def _is_need_to_add_activation_to_vector(self, arr, index):
         return index < len(arr) - 1
@@ -165,32 +157,22 @@ class NeuralNetwork:
         #
         # return sum(int(x == y) for (x, y) in test_results)
 
-
     def _sigmoid(self, z):
 
         return 1.0 / (1.0 + np.exp(-z))
 
-    def sigmoid_prime(self, z):
-        """Derivative of the sigmoid function."""
+    def _sigmoid_prime(self, z):
+
         return self._sigmoid(z) * (1 - self._sigmoid(z))
 
-    def cost_derivative(self, output_activations, y):
-        """Return the vector of partial derivatives \partial C_x /
-        \partial a for the output activations."""
+    def _derivative_of_activation_function_of_last_layer(self, output_activations, y):
+
         return (output_activations-y)
 
     def set_network_parameters(self, epochs, eta, mini_batch_size):
         self._number_of_epochs = epochs
         self._eta = eta
         self._mini_batch_size = mini_batch_size
-
-
-
-
-
-
-
-
 
 
 def convert_to_x_y(training_data_to_convert):
