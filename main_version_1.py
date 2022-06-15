@@ -7,7 +7,7 @@ class NeuralNetwork:
         self._network_structure = []
         self._init_network_structure(network_structure)
         self._number_of_layers = len(self._network_structure)
-        self._weights_by_spaces_betweens_layers = self.init_weights()
+        self._weights_by_spaces_between_layers = self.init_weights()
         self._number_of_epochs = None
         self._mini_batch_size = None
         self._eta = None
@@ -47,7 +47,7 @@ class NeuralNetwork:
         for right_side_space_layer_index in range(1, len(self._network_structure)): # w is matrix, x is vector -> product gives a vector
 
             left_side_space_layer_index = right_side_space_layer_index - 1
-            w = self._weights_by_spaces_betweens_layers[left_side_space_layer_index]
+            w = self._weights_by_spaces_between_layers[left_side_space_layer_index]
             activation = self._sigmoid(np.dot(w, activation))
 
             if right_side_space_layer_index < len(self._network_structure) - 1:
@@ -77,17 +77,26 @@ class NeuralNetwork:
             if x_test is not None and y_test is not None:
                 print("Results test of epoch number {} : {} / {}".format(epoch, self.score(x_test, y_test), len(x_test)))
 
-
-
-
     def _learn_by_mini_batch(self, mini_batch):
-        nabla_w = [np.zeros(w.shape) for w in self._weights_by_spaces_betweens_layers]
+        weights_delta_for_current_mini_batch = [np.zeros(w.shape) for w in self._weights_by_spaces_between_layers]
 
-        for x, y in mini_batch: #x is the array of data, y is the result
-            delta_nabla_w = self._feed_forward_and_back_propagation(x, y)
-            nabla_w = [nw + dnw for nw, dnw in zip(nabla_w, delta_nabla_w)]
-            self._weights_by_spaces_betweens_layers = [w - self._eta * nw
-                                                       for w, nw in zip(self._weights_by_spaces_betweens_layers, nabla_w)]
+        for sample_array, actual_result_array in mini_batch: #x is the array of data, y is the result
+            weights_delta_for_current_xi = self._feed_forward_and_back_propagation(sample_array, actual_result_array)
+            # weights_delta_for_current_mini_batch = [nw + dnw for nw, dnw in zip(weights_delta_for_current_mini_batch, weights_delta_for_current_xi)]
+            weights_delta_for_current_mini_batch = self._get_weights_delta_for_current_mini_batch(weights_delta_for_current_mini_batch, weights_delta_for_current_xi)
+            self._weights_by_spaces_between_layers = [w - self._eta * nw
+                                                      for w, nw in zip(self._weights_by_spaces_between_layers, weights_delta_for_current_mini_batch)]
+
+    def _get_weights_delta_for_current_mini_batch(self, weights_delta_for_current_mini_batch, weights_delta_for_current_xi):
+
+        result = []
+        for old_weight_delta, new_weight_delta in zip(weights_delta_for_current_mini_batch, weights_delta_for_current_xi):
+            result.append(old_weight_delta + new_weight_delta)
+
+        return result
+
+
+        # return [nw + dnw for nw, dnw in zip(weights_delta_for_current_mini_batch, weights_delta_for_current_xi)]
 
     def _add_bias_to_array(self, np_array):
 
@@ -95,19 +104,19 @@ class NeuralNetwork:
 
     def _feed_forward_and_back_propagation(self, x, y):
         x = self._add_bias_to_array(x)
-        nabla_w = [np.zeros(w.shape) for w in self._weights_by_spaces_betweens_layers]
+        nabla_w = [np.zeros(w.shape) for w in self._weights_by_spaces_between_layers]
         current_activation = x #the first activation is the actual data values x1,x2...xN
         activations = [x]  # list to store all the activations, layer by layer
         all_layers_dot_products = [] # this list holds the dot products of all the neurons in a single layer
 
         # what im doing is to add the bias every iteration for the current activation..(adding 1 in the index - of the activation array)
         #feedforward
-        for i, weights_of_all_neurons_in_current_layer in enumerate(self._weights_by_spaces_betweens_layers):
+        for i, weights_of_all_neurons_in_current_layer in enumerate(self._weights_by_spaces_between_layers):
             dot_products_for_all_neurons_in_current_layer = np.dot(weights_of_all_neurons_in_current_layer, current_activation)
             all_layers_dot_products.append(dot_products_for_all_neurons_in_current_layer)
             current_activation = self._sigmoid(dot_products_for_all_neurons_in_current_layer)
 
-            if self._is_need_to_add_activation_to_vector(self._weights_by_spaces_betweens_layers, i):
+            if self._is_need_to_add_activation_to_vector(self._weights_by_spaces_between_layers, i):
                 current_activation = self._add_bias_to_array(current_activation)
 
             activations.append(current_activation)
@@ -120,7 +129,7 @@ class NeuralNetwork:
         # I don't use b since the bias is already in the weights... like adi taut us.
         for i in range(2, self._number_of_layers):
             dot_products_for_all_neurons_in_current_layer = all_layers_dot_products[-i]
-            weights_by_current_layer = self._weights_by_spaces_betweens_layers[-i + 1]
+            weights_by_current_layer = self._weights_by_spaces_between_layers[-i + 1]
             weights_by_current_layer_without_bias_weights = np.delete(weights_by_current_layer, 0, 1)
             delta = np.dot(weights_by_current_layer_without_bias_weights.transpose(), delta) * self.sigmoid_prime(dot_products_for_all_neurons_in_current_layer)
             nabla_w[-i] = np.dot(delta, activations[-i - 1].transpose())
@@ -131,17 +140,12 @@ class NeuralNetwork:
         return index < len(arr) - 1
 
     def _create_mini_batches_from_training_data(self):
-        # n = len(self._training_data)
-        # mini_batches = [
-        #     self._training_data[k:k + self._mini_batch_size]
-        #     for k in range(0, n, self._mini_batch_size)]
-
-        mini_batches = []
+        groups_of_inputs = []
         training_data_size = len(self._training_data)
         for i in range(0, training_data_size, self._mini_batch_size):
-            mini_batches.append(self._training_data[i: i + self._mini_batch_size])
+            groups_of_inputs.append(self._training_data[i: i + self._mini_batch_size])
 
-        return mini_batches
+        return groups_of_inputs
 
     def score(self, x, y):
         self._test_data = self._convert_x_y_to_data(x, y)
